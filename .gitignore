@@ -37,6 +37,10 @@ Thumbs.db
 # Project output data
 trafficflow_probe/
 
+# Screenshots etc
+screenshots/
+documents/
+
 *.key
 trafficflow_probe/
 __pycache__/

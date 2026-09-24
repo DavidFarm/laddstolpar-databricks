@@ -1,0 +1,22 @@
+lan_kod,lan_namn,elomrade_default,basis,source
+01,Stockholm,SE3,county description,Selectra SE3 page (2026-06-30)
+03,Uppsala,SE3,county description,Selectra SE3 page (2026-06-30)
+04,Södermanland,SE3,county description,Selectra SE3 page (2026-06-30)
+05,Östergötland,SE3,county description,Selectra SE3 page (2026-06-30)
+06,Jönköping,SE3,county description + kommun checks (south overridden),Selectra SE3 page; sverigeskommuner.net
+07,Kronoberg,SE4,4 of 8 kommuner checked all SE4,sverigeskommuner.net (2026-09-24)
+08,Kalmar,SE4,south checked SE4; north overridden,sverigeskommuner.net (2026-09-24)
+09,Gotland,SE3,county description,Selectra SE3 page (2026-06-30)
+10,Blekinge,SE4,county description,Selectra SE3/SE4 border description
+12,Skåne,SE4,county description,Selectra SE3/SE4 border description
+13,Halland,SE4,all 6 kommuner checked (Kungsbacka and Varberg overridden),sverigeskommuner.net (2026-09-24)
+14,Västra Götaland,SE3,county description + 4 south kommuner checked,Selectra SE3 page; sverigeskommuner.net
+17,Värmland,SE3,county description + Torsby checked,Selectra SE3 page; sverigeskommuner.net
+18,Örebro,SE3,county description,Selectra SE3 page (2026-06-30)
+19,Västmanland,SE3,county description,Selectra SE3 page (2026-06-30)
+20,Dalarna,SE3,"county description ""större delen av Dalarna"" + 9 kommuner checked",Selectra SE3 page; sverigeskommuner.net
+21,Gävleborg,SE3,all 10 kommuner checked and overridden; default irrelevant,sverigeskommuner.net; Gävle Energi
+22,Västernorrland,SE2,county description,Selectra SE2 page
+23,Jämtland,SE2,county description + Härjedalen checked,Selectra SE2 page; sverigeskommuner.net
+24,Västerbotten,SE2,"county description ""större delen av Västerbotten"" + all 15 checked",Selectra SE2 page; sverigeskommuner.net
+25,Norrbotten,SE1,all 14 checked (13 stated; Arvidsjaur inferred),sverigeskommuner.net (2026-09-24)
