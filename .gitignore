@@ -36,3 +36,8 @@ Thumbs.db
 
 # Project output data
 trafficflow_probe/
+
+*.key
+trafficflow_probe/
+__pycache__/
+.ipynb_checkpoints/
