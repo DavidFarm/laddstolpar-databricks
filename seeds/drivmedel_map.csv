@@ -1,0 +1,9 @@
+drivmedel,scb_kod,trafa_kod,laddbar
+BEV,120,103,true
+PHEV,140,105,true
+HEV,130,104,false
+BENSIN,100,101,false
+DIESEL,110,102,false
+ETANOL,150,106,false
+GAS,160,107,false
+OVRIGT,190,109,false
