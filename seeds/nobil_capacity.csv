@@ -29,3 +29,7 @@ attrvalid,kw,current_type,kw_basis,nobil_label
 27,,H2,none,"700 bar"
 34,,BIOGAS,none,"CBG"
 35,,BIOGAS,none,"LBG"
+43,600,DC,stated_in_data,"600 kW DC"
+46,320,DC,stated_in_data,"320 KW DC"
+48,1000,DC,stated_in_data,"1000 KW DC"
+50,1200,DC,stated_in_data,"1200 KW DC"
