@@ -88,3 +88,70 @@ SELECT
   ROUND(try_divide(c.personbilar_juridisk, c.personbilar_totalt), 4) AS andel_juridisk
 FROM pop p
 FULL OUTER JOIN cars c ON c.kommun_kod = p.kommun_kod AND c.ar = p.ar;
+
+-- 5. Charging stations: one row per public station, latest NOBIL snapshot.
+--    Gold rules (design 0.1, 26 Sep): public only; station 84436 excluded; car/van connectors only;
+--    EVSE rule (Σ over EVSEs of max connector kW; no EVSE ID = own EVSE); fast/ultra on DC.
+CREATE OR REFRESH MATERIALIZED VIEW gold.fct_laddstation (
+  CONSTRAINT has_power       EXPECT (kw_total > 0),
+  CONSTRAINT dc_within_total EXPECT (kw_dc <= kw_total) ON VIOLATION FAIL UPDATE
+)
+COMMENT 'Public charging stations (NOBIL, CC BY 4.0), car/van connectors only. kW is nameplate, EVSE rule applied (finding 54).'
+AS
+WITH st AS (
+  SELECT station_id, station_name, kommun_kod, operator, owned_by, lat, lon, _snapshot_date
+  FROM silver.nobil_station
+  WHERE __END_AT IS NULL
+    AND is_public
+    AND station_id <> 84436                                         -- test entry "Test_Warfvinges" (finding 57)
+),
+conn AS (
+  SELECT station_id,
+         COALESCE(NULLIF(evse_id, ''), concat('conn:', connector_no)) AS evse_key,  -- no EVSE ID = own EVSE
+         kw,
+         current_type
+  FROM silver.nobil_connector
+  WHERE __END_AT IS NULL
+    AND vehicle_type_code IN ('1', '6', '11', '12', '15', '22')    -- includes cars or vans (finding 55)
+    AND current_type IN ('AC', 'DC')                               -- excludes hydrogen (finding 48)
+),
+evse AS (
+  SELECT station_id, evse_key,
+         MAX(kw)                                          AS kw_evse,
+         MAX(CASE WHEN current_type = 'DC' THEN kw END)   AS kw_dc_evse,
+         COUNT(*)                                         AS n_conn,
+         COUNT_IF(current_type = 'DC')                    AS n_dc_conn
+  FROM conn
+  GROUP BY station_id, evse_key
+),
+agg AS (
+  SELECT station_id,
+         COUNT(*)                      AS n_evse,
+         SUM(n_conn)                   AS n_anslutningar,
+         SUM(n_dc_conn)                AS n_dc_anslutningar,
+         SUM(kw_evse)                  AS kw_total,
+         COALESCE(SUM(kw_dc_evse), 0)  AS kw_dc,
+         MAX(kw_dc_evse)               AS kw_dc_max
+  FROM evse
+  GROUP BY station_id
+)
+SELECT
+  st.station_id,
+  st.station_name,
+  st.kommun_kod,
+  st.operator,
+  st.owned_by,
+  a.n_anslutningar,
+  a.n_dc_anslutningar,
+  a.n_evse,
+  a.kw_total,
+  a.kw_dc,
+  a.kw_dc_max,
+  COALESCE(a.kw_dc_max >= 50, false)   AS is_fast,     -- DC >= 50 kW
+  COALESCE(a.kw_dc_max >= 150, false)  AS is_ultra,    -- DC >= 150 kW
+  st.lat,
+  st.lon,
+  COALESCE(st.lat BETWEEN 55.0 AND 69.5 AND st.lon BETWEEN 10.5 AND 24.5, false) AS position_valid,
+  st._snapshot_date
+FROM st
+JOIN agg a USING (station_id);
