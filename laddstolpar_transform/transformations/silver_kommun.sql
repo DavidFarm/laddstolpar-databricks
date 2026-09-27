@@ -9,7 +9,14 @@ CREATE OR REFRESH MATERIALIZED VIEW kommun (
   CONSTRAINT kommungrupp_present EXPECT (kommungrupp IS NOT NULL)                    ON VIOLATION FAIL UPDATE,
   CONSTRAINT known_split_flag    EXPECT (elomrade_is_split IS NOT NULL)              ON VIOLATION FAIL UPDATE,
   -- Observation: split kommuner whose primary zone is not yet sourced
-  CONSTRAINT zone_reviewed       EXPECT (NOT elomrade_needs_review)
+  CONSTRAINT zone_reviewed       EXPECT (NOT elomrade_needs_review),
+  -- Added constraint on 2026-09-27 to handle incorrect elomrade_secondary
+     CONSTRAINT secondary_matches_split EXPECT (
+     COALESCE(
+       (elomrade_is_split AND elomrade_secondary IN ('SE1','SE2','SE3','SE4') AND elomrade_secondary <> elomrade)
+       OR (NOT elomrade_is_split AND elomrade_secondary IS NULL),
+       false)
+   ) ON VIOLATION FAIL UPDATE
 )
 COMMENT 'Conformed kommun list: SKR kommungrupp 2023 + price zone (county default, kommun override). One row per kommun.'
 AS
@@ -34,7 +41,7 @@ SELECT
   s.huvudgrupp,
   s.kommungrupp,
   COALESCE(o.elomrade_primary, l.elomrade_default)      AS elomrade,
-  o.elomrade_secondary,
+  NULLIF(o.elomrade_secondary, '')                      AS elomrade_secondary,
   CASE
     WHEN o.kommun_kod IS NULL                                        THEN false
     WHEN lower(trim(o.is_split)) IN ('true','1','yes','ja','y','j')  THEN true
