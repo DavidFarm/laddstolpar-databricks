@@ -1,4 +1,4 @@
-.scenario,scenario_namn,metric,weight
+scenario,scenario_namn,metric,weight
 S1,Spec only,ev_demand,1
 S1,Spec only,growth,1
 S1,Spec only,price,1
