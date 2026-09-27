@@ -1,0 +1,8 @@
+parameter,value,unit,note
+n_stations,50,stations,spec
+station_kw,600,kW,4 x 150 kW (decision 23 Sep)
+max_per_kommun,10,stations,cap (decision 23 Sep)
+first_divisor,1.0,divisor,pure Sainte-Laguë; Riksdag variant uses a higher first divisor
+phev_weight,0.6,ratio,AFIR 0.8/1.3
+growth_window_months,12,months,TAB3277 window for growth
+price_window_days,365,days,zone mean price window

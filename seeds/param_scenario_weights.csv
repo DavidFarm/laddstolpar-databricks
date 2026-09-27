@@ -1,0 +1,13 @@
+.scenario,scenario_namn,metric,weight
+S1,Spec only,ev_demand,1
+S1,Spec only,growth,1
+S1,Spec only,price,1
+S1,Spec only,supply,0
+S2,Spec + supply,ev_demand,25
+S2,Spec + supply,growth,25
+S2,Spec + supply,price,25
+S2,Spec + supply,supply,25
+S3,Growth support,ev_demand,15
+S3,Growth support,growth,35
+S3,Growth support,price,15
+S3,Growth support,supply,35

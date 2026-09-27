@@ -1,0 +1,7 @@
+variant,variant_namn,swap_from,swap_to,use_cost_factor
+base,Base case,,,true
+no_cost,No cost adjustment,,,false
+zone_secondary,Split kommuner on secondary price zone,price,price_zone_alt,true
+supply_county,Supply counted per county,supply,supply_county,true
+growth_raw,Growth without shrinkage,growth,growth_raw,true
+growth_stock,Growth as change in fleet share (C),growth,growth_stock,true

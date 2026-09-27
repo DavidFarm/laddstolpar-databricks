@@ -1,0 +1,10 @@
+gruppkod,kommungrupp,cost_factor,basis
+A1,Storstäder,1.5,assumption (design 2.5)
+A2,Pendlingskommun nära storstad,1.25,assumption (design 2.5)
+B3,Större stad,1.25,assumption (design 2.5)
+B4,Pendlingskommun nära större stad,1.0,assumption (design 2.5)
+B5,Lågpendlingskommun nära större stad,1.0,assumption (design 2.5)
+C6,Mindre stad/tätort,1.0,assumption (design 2.5)
+C7,Pendlingskommun nära mindre stad/tätort,1.0,assumption (design 2.5)
+C8,Landsbygdskommun,1.0,assumption (design 2.5)
+C9,Landsbygdskommun med besöksnäring,1.0,assumption (design 2.5)
