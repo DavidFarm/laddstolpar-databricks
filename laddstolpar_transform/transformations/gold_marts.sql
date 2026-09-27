@@ -194,3 +194,114 @@ SELECT
   n_same_pair,
   (SELECT COUNT(*) FROM gold.dim_kommun) AS n_dim
 FROM ranked;
+
+-- Runs = scenario × variant (18). Each variant swaps at most one component's metric (method §5).
+CREATE OR REFRESH MATERIALIZED VIEW gold.mart_kommun_score_component
+COMMENT 'Score contribution per run (scenario × variant), kommun and component: weight × percentile position of the metric used.'
+AS
+WITH runs AS (
+  SELECT w.scenario, w.scenario_namn, v.variant, v.variant_namn,
+         w.metric                                                          AS component,
+         CASE WHEN w.metric = v.swap_from THEN v.swap_to ELSE w.metric END AS metric_used,
+         w.weight
+  FROM gold.param_scenario_weights w
+  CROSS JOIN gold.param_variant v
+)
+SELECT r.scenario, r.scenario_namn, r.variant, r.variant_namn,
+       m.kommun_kod, r.component, r.metric_used, r.weight,
+       m.value, m.pct_rank,
+       r.weight * m.pct_rank AS contribution,
+       m.detail
+FROM runs r
+JOIN gold.mart_kommun_metric m ON m.metric = r.metric_used;
+
+-- Score per run and kommun
+CREATE OR REFRESH MATERIALIZED VIEW gold.mart_kommun_score (
+  CONSTRAINT all_components EXPECT (n_components = n_expected)                 ON VIOLATION FAIL UPDATE,
+  CONSTRAINT score_in_range EXPECT (COALESCE(score BETWEEN 0 AND 1, false))    ON VIOLATION FAIL UPDATE
+)
+COMMENT 'Total score (0–1) per run and kommun, with rank within the run.'
+AS
+WITH s AS (
+  SELECT scenario, variant, kommun_kod,
+         SUM(contribution) AS score,
+         COUNT(*)          AS n_components
+  FROM gold.mart_kommun_score_component
+  GROUP BY scenario, variant, kommun_kod
+)
+SELECT s.*,
+       n.n_expected,
+       RANK() OVER (PARTITION BY s.scenario, s.variant ORDER BY s.score DESC) AS score_rank
+FROM s
+JOIN (SELECT scenario, COUNT(*) AS n_expected FROM gold.param_scenario_weights GROUP BY scenario) n
+  USING (scenario);
+
+-- Allocation: the 50 largest quotients score / (cost × divisor), at most max_per_kommun per kommun (method §4)
+CREATE OR REFRESH MATERIALIZED VIEW gold.mart_allocation_station (
+  CONSTRAINT within_cap EXPECT (station_no_in_kommun <= max_per_kommun) ON VIOLATION FAIL UPDATE
+)
+COMMENT 'One row per allocated station and run, in allocation order (seat_no). Highest-averages method = top-N of the quotient pool.'
+AS
+WITH p AS (
+  SELECT MAX(CASE WHEN parameter = 'n_stations'     THEN CAST(value AS INT)    END) AS n_stations,
+         MAX(CASE WHEN parameter = 'max_per_kommun' THEN CAST(value AS INT)    END) AS max_per_kommun,
+         MAX(CASE WHEN parameter = 'first_divisor'  THEN CAST(value AS DOUBLE) END) AS first_divisor
+  FROM gold.param_model
+),
+base AS (
+  SELECT s.scenario, s.variant, s.kommun_kod, s.score,
+         CASE WHEN v.use_cost_factor THEN CAST(c.cost_factor AS DOUBLE) ELSE 1.0 END AS cost_factor
+  FROM gold.mart_kommun_score s
+  JOIN gold.param_variant v     USING (variant)
+  JOIN gold.dim_kommun k        USING (kommun_kod)
+  JOIN gold.param_cost_factor c USING (gruppkod)
+),
+q AS (
+  SELECT b.*, js.j, p.n_stations, p.max_per_kommun,
+         CASE WHEN js.j = 1 THEN p.first_divisor ELSE 2 * js.j - 1 END                     AS divisor,
+         b.score / (b.cost_factor * CASE WHEN js.j = 1 THEN p.first_divisor ELSE 2 * js.j - 1 END) AS quotient
+  FROM base b
+  CROSS JOIN p
+  CROSS JOIN (SELECT explode(sequence(1, max_per_kommun)) AS j FROM p) js
+),
+ranked AS (
+  SELECT q.*,
+         ROW_NUMBER() OVER (PARTITION BY scenario, variant
+                            ORDER BY quotient DESC, score DESC, kommun_kod, j) AS seat_no   -- deterministic tie-break
+  FROM q
+)
+SELECT scenario, variant, seat_no, kommun_kod,
+       j AS station_no_in_kommun, divisor, cost_factor, score, quotient, max_per_kommun
+FROM ranked
+WHERE seat_no <= n_stations;
+
+-- Allocation per run and kommun (all 290, 0 where none)
+CREATE OR REFRESH MATERIALIZED VIEW gold.mart_allocation (
+  CONSTRAINT within_cap EXPECT (n_stations <= max_per_kommun) ON VIOLATION FAIL UPDATE,
+  CONSTRAINT run_total  EXPECT (run_stations = n_target)      ON VIOLATION FAIL UPDATE
+)
+COMMENT 'Stations per run and kommun, with score, rank, first seat and new capacity (station_kw × stations).'
+AS
+WITH p AS (
+  SELECT MAX(CASE WHEN parameter = 'n_stations'     THEN CAST(value AS INT)    END) AS n_target,
+         MAX(CASE WHEN parameter = 'max_per_kommun' THEN CAST(value AS INT)    END) AS max_per_kommun,
+         MAX(CASE WHEN parameter = 'station_kw'     THEN CAST(value AS DOUBLE) END) AS station_kw
+  FROM gold.param_model
+),
+a AS (
+  SELECT scenario, variant, kommun_kod,
+         COUNT(*)     AS n_stations,
+         MIN(seat_no) AS first_seat
+  FROM gold.mart_allocation_station
+  GROUP BY scenario, variant, kommun_kod
+)
+SELECT s.scenario, s.variant, s.kommun_kod, s.score, s.score_rank,
+       CAST(COALESCE(a.n_stations, 0) AS INT)                               AS n_stations,
+       a.first_seat,
+       COALESCE(a.n_stations, 0) * p.station_kw                             AS kw_new,
+       SUM(COALESCE(a.n_stations, 0)) OVER (PARTITION BY s.scenario, s.variant) AS run_stations,
+       p.n_target,
+       p.max_per_kommun
+FROM gold.mart_kommun_score s
+LEFT JOIN a USING (scenario, variant, kommun_kod)
+CROSS JOIN p;
