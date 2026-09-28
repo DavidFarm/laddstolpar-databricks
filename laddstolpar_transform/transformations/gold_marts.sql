@@ -3,8 +3,9 @@
 -- value = the metric; better = direction; pct_rank = percentile position, 0 = worst, 1 = best (ties share the midrank).
 
 CREATE OR REFRESH MATERIALIZED VIEW gold.mart_kommun_metric (
-  CONSTRAINT known_metric     EXPECT (metric IN ('ev_demand', 'growth', 'growth_raw', 'growth_stock',
-                                                 'price', 'price_zone_alt', 'supply', 'supply_county')) ON VIOLATION FAIL UPDATE,
+    CONSTRAINT known_metric     EXPECT (metric IN ('ev_demand', 'growth', 'growth_raw', 'growth_stock',
+                                                 'price', 'price_zone_alt', 'supply', 'supply_county',
+                                                 'supply_traffic', 'through_traffic', 'traffic', 'traffic_intensity')) ON VIOLATION FAIL UPDATE,
   CONSTRAINT value_present    EXPECT (value IS NOT NULL)                          ON VIOLATION FAIL UPDATE,
   CONSTRAINT rank_in_range    EXPECT (COALESCE(pct_rank BETWEEN 0 AND 1, false))  ON VIOLATION FAIL UPDATE,
   CONSTRAINT one_row_per_pair EXPECT (n_same_pair = 1)                            ON VIOLATION FAIL UPDATE,
@@ -83,6 +84,22 @@ sup_k AS (
   JOIN ev e USING (kommun_kod)
   LEFT JOIN (SELECT kommun_kod, SUM(kw_dc) AS kw_dc FROM gold.fct_laddstation GROUP BY kommun_kod) s
     USING (kommun_kod)
+),
+
+-- Traffic on state roads (gold.fct_trafik_kommun) + population in the latest year (gold.fct_kommun_ar)
+py AS (SELECT MAX(ar) AS y FROM gold.fct_kommun_ar WHERE folkmangd IS NOT NULL),
+tr AS (
+  SELECT s.kommun_kod,
+         s.kw_dc,
+         CAST(t.vkm_per_day AS DOUBLE) AS vkm,
+         CAST(t.road_km     AS DOUBLE) AS road_km,
+         CAST(f.folkmangd   AS DOUBLE) AS pop,
+         format_string('NVDB Trafik %s; SCB population %d', CAST(t.betraktelsedatum AS STRING), py.y) AS as_of
+  FROM sup_k s
+  JOIN gold.fct_trafik_kommun t USING (kommun_kod)
+  JOIN gold.fct_kommun_ar f     USING (kommun_kod)
+  CROSS JOIN py
+  WHERE f.ar = py.y
 ),
 
 -- Zone price over the window, weighted by quarter-hours (= mean over all quarter-hours)
@@ -167,6 +184,40 @@ metrics AS (
                        SUM(s.kw_dc) OVER (PARTITION BY s.lan_kod), SUM(s.ev) OVER (PARTITION BY s.lan_kod)),
          nb.as_of
   FROM sup_k s CROSS JOIN nb
+  UNION ALL   -- 9. Existing supply per traffic: public DC kW per 1,000 vehicle-km/day (P2; method §2.5)
+  -- Rule (b): no state-road traffic → treated as fully served (+∞, lower = better → worst position)
+  SELECT t.kommun_kod, 'supply_traffic', 'lower',
+         CASE WHEN t.vkm > 0 THEN t.kw_dc / (t.vkm / 1000) ELSE CAST('Infinity' AS DOUBLE) END,
+         t.kw_dc, t.vkm, CAST(NULL AS DOUBLE), CAST(NULL AS DOUBLE),
+         CASE WHEN t.vkm > 0
+              THEN format_string('%.0f kW public DC for %.0f k vehicle-km/day', t.kw_dc, t.vkm / 1000)
+              ELSE 'No state road: treated as fully served (rule b)' END,
+         t.as_of
+  FROM tr t
+
+  UNION ALL   -- 10. Through-traffic: vehicle-km/day on state roads per inhabitant (P2; finding 72)
+  SELECT t.kommun_kod, 'through_traffic', 'higher',
+         try_divide(t.vkm, t.pop),
+         t.vkm, t.pop, CAST(NULL AS DOUBLE), CAST(NULL AS DOUBLE),
+         format_string('%.0f k vehicle-km/day for %.0f inhabitants', t.vkm / 1000, t.pop),
+         t.as_of
+  FROM tr t
+
+  UNION ALL   -- 11. Traffic volume (context only, weight 0)
+  SELECT t.kommun_kod, 'traffic', 'higher',
+         t.vkm,
+         t.vkm, t.road_km, CAST(NULL AS DOUBLE), CAST(NULL AS DOUBLE),
+         format_string('%.0f k vehicle-km/day on %.0f km of state road', t.vkm / 1000, t.road_km),
+         t.as_of
+  FROM tr t
+
+  UNION ALL   -- 12. Traffic intensity ≈ mean ÅDT (context only; rejected as an index metric, finding 72)
+  SELECT t.kommun_kod, 'traffic_intensity', 'higher',
+         CASE WHEN t.road_km > 0 THEN t.vkm / t.road_km ELSE 0 END,
+         t.vkm, t.road_km, CAST(NULL AS DOUBLE), CAST(NULL AS DOUBLE),
+         format_string('%.0f vehicles per road-km', CASE WHEN t.road_km > 0 THEN t.vkm / t.road_km ELSE 0 END),
+         t.as_of
+  FROM tr t
 ),
 
 ranked AS (
@@ -195,9 +246,9 @@ SELECT
   (SELECT COUNT(*) FROM gold.dim_kommun) AS n_dim
 FROM ranked;
 
--- Runs = scenario × variant (18). Each variant swaps at most one component's metric (method §5).
+-- Runs = strategy × variant (14: P1 × 6, P2 × 8; only_scenario limits the α variants to P2). Method §3.3, §5.
 CREATE OR REFRESH MATERIALIZED VIEW gold.mart_kommun_score_component
-COMMENT 'Score contribution per run (scenario × variant), kommun and component: weight × percentile position of the metric used.'
+COMMENT 'Attractiveness contribution per run (strategy × variant), kommun and component: weight × percentile position of the metric used.'
 AS
 WITH runs AS (
   SELECT w.scenario, w.scenario_namn, v.variant, v.variant_namn,
@@ -206,6 +257,7 @@ WITH runs AS (
          w.weight
   FROM gold.param_scenario_weights w
   CROSS JOIN gold.param_variant v
+  WHERE v.only_scenario IS NULL OR v.only_scenario = w.scenario
 )
 SELECT r.scenario, r.scenario_namn, r.variant, r.variant_namn,
        m.kommun_kod, r.component, r.metric_used, r.weight,
@@ -215,32 +267,54 @@ SELECT r.scenario, r.scenario_namn, r.variant, r.variant_namn,
 FROM runs r
 JOIN gold.mart_kommun_metric m ON m.metric = r.metric_used;
 
--- Score per run and kommun
+-- Attractiveness and votes per run and kommun (method §4.2): votes = EV^α × attractiveness ÷ cost
 CREATE OR REFRESH MATERIALIZED VIEW gold.mart_kommun_score (
-  CONSTRAINT all_components EXPECT (n_components = n_expected)                 ON VIOLATION FAIL UPDATE,
-  CONSTRAINT score_in_range EXPECT (COALESCE(score BETWEEN 0 AND 1, false))    ON VIOLATION FAIL UPDATE
+  CONSTRAINT all_components     EXPECT (n_components = n_expected)                        ON VIOLATION FAIL UPDATE,
+  CONSTRAINT attractiveness_ok  EXPECT (COALESCE(attractiveness BETWEEN 0 AND 1, false))  ON VIOLATION FAIL UPDATE,
+  CONSTRAINT votes_ok           EXPECT (COALESCE(votes >= 0, false))                      ON VIOLATION FAIL UPDATE
 )
-COMMENT 'Total score (0–1) per run and kommun, with rank within the run.'
+COMMENT 'Per run and kommun: attractiveness a (0–1, weighted percentile positions), EV, α, cost factor and votes = EV^α × a ÷ cost.'
 AS
 WITH s AS (
   SELECT scenario, variant, kommun_kod,
-         SUM(contribution) AS score,
+         SUM(contribution) AS attractiveness,
          COUNT(*)          AS n_components
   FROM gold.mart_kommun_score_component
   GROUP BY scenario, variant, kommun_kod
+),
+n AS (SELECT scenario, COUNT(*) AS n_expected FROM gold.param_scenario_weights GROUP BY scenario),
+run AS (
+  SELECT st.scenario, v.variant,
+         COALESCE(v.alpha, st.alpha) AS alpha,
+         v.use_cost_factor
+  FROM gold.param_strategy st
+  CROSS JOIN gold.param_variant v
+  WHERE v.only_scenario IS NULL OR v.only_scenario = st.scenario
+),
+ev AS (SELECT kommun_kod, value AS ev FROM gold.mart_kommun_metric WHERE metric = 'ev_demand'),
+b AS (
+  SELECT s.scenario, s.variant, s.kommun_kod,
+         s.attractiveness, s.n_components, n.n_expected,
+         e.ev, r.alpha,
+         CASE WHEN r.use_cost_factor THEN CAST(c.cost_factor AS DOUBLE) ELSE 1.0 END AS cost_factor
+  FROM s
+  JOIN n USING (scenario)
+  JOIN run r USING (scenario, variant)
+  JOIN ev e USING (kommun_kod)
+  JOIN gold.dim_kommun k USING (kommun_kod)
+  JOIN gold.param_cost_factor c USING (gruppkod)
 )
-SELECT s.*,
-       n.n_expected,
-       RANK() OVER (PARTITION BY s.scenario, s.variant ORDER BY s.score DESC) AS score_rank
-FROM s
-JOIN (SELECT scenario, COUNT(*) AS n_expected FROM gold.param_scenario_weights GROUP BY scenario) n
-  USING (scenario);
+SELECT b.*,
+       POWER(b.ev, b.alpha) * b.attractiveness / b.cost_factor                                         AS votes,
+       RANK() OVER (PARTITION BY scenario, variant ORDER BY attractiveness DESC)                          AS attractiveness_rank,
+       RANK() OVER (PARTITION BY scenario, variant ORDER BY POWER(ev, alpha) * attractiveness / cost_factor DESC) AS votes_rank
+FROM b;
 
--- Allocation: the 50 largest quotients score / (cost × divisor), at most max_per_kommun per kommun (method §4)
+-- Allocation: the N largest quotients votes / divisor (Sainte-Laguë, first divisor from param_model), cap per kommun
 CREATE OR REFRESH MATERIALIZED VIEW gold.mart_allocation_station (
   CONSTRAINT within_cap EXPECT (station_no_in_kommun <= max_per_kommun) ON VIOLATION FAIL UPDATE
 )
-COMMENT 'One row per allocated station and run, in allocation order (seat_no). Highest-averages method = top-N of the quotient pool.'
+COMMENT 'One row per allocated station and run, in allocation order (seat_no). Highest-averages method on votes = top-N of the quotient pool.'
 AS
 WITH p AS (
   SELECT MAX(CASE WHEN parameter = 'n_stations'     THEN CAST(value AS INT)    END) AS n_stations,
@@ -248,30 +322,24 @@ WITH p AS (
          MAX(CASE WHEN parameter = 'first_divisor'  THEN CAST(value AS DOUBLE) END) AS first_divisor
   FROM gold.param_model
 ),
-base AS (
-  SELECT s.scenario, s.variant, s.kommun_kod, s.score,
-         CASE WHEN v.use_cost_factor THEN CAST(c.cost_factor AS DOUBLE) ELSE 1.0 END AS cost_factor
-  FROM gold.mart_kommun_score s
-  JOIN gold.param_variant v     USING (variant)
-  JOIN gold.dim_kommun k        USING (kommun_kod)
-  JOIN gold.param_cost_factor c USING (gruppkod)
-),
 q AS (
-  SELECT b.*, js.j, p.n_stations, p.max_per_kommun,
-         CASE WHEN js.j = 1 THEN p.first_divisor ELSE 2 * js.j - 1 END                     AS divisor,
-         b.score / (b.cost_factor * CASE WHEN js.j = 1 THEN p.first_divisor ELSE 2 * js.j - 1 END) AS quotient
-  FROM base b
+  SELECT s.scenario, s.variant, s.kommun_kod, s.votes, s.attractiveness, s.cost_factor,
+         js.j, p.n_stations, p.max_per_kommun,
+         CASE WHEN js.j = 1 THEN p.first_divisor ELSE 2 * js.j - 1 END           AS divisor,
+         s.votes / CASE WHEN js.j = 1 THEN p.first_divisor ELSE 2 * js.j - 1 END AS quotient
+  FROM gold.mart_kommun_score s
   CROSS JOIN p
   CROSS JOIN (SELECT explode(sequence(1, max_per_kommun)) AS j FROM p) js
+  WHERE s.votes > 0
 ),
 ranked AS (
   SELECT q.*,
          ROW_NUMBER() OVER (PARTITION BY scenario, variant
-                            ORDER BY quotient DESC, score DESC, kommun_kod, j) AS seat_no   -- deterministic tie-break
+                            ORDER BY quotient DESC, votes DESC, kommun_kod, j) AS seat_no   -- deterministic tie-break
   FROM q
 )
 SELECT scenario, variant, seat_no, kommun_kod,
-       j AS station_no_in_kommun, divisor, cost_factor, score, quotient, max_per_kommun
+       j AS station_no_in_kommun, divisor, cost_factor, attractiveness, votes, quotient, max_per_kommun
 FROM ranked
 WHERE seat_no <= n_stations;
 
@@ -280,7 +348,7 @@ CREATE OR REFRESH MATERIALIZED VIEW gold.mart_allocation (
   CONSTRAINT within_cap EXPECT (n_stations <= max_per_kommun) ON VIOLATION FAIL UPDATE,
   CONSTRAINT run_total  EXPECT (run_stations = n_target)      ON VIOLATION FAIL UPDATE
 )
-COMMENT 'Stations per run and kommun, with score, rank, first seat and new capacity (station_kw × stations).'
+COMMENT 'Stations per run and kommun, with attractiveness, EV, α, votes, ranks, first seat and new capacity (station_kw × stations).'
 AS
 WITH p AS (
   SELECT MAX(CASE WHEN parameter = 'n_stations'     THEN CAST(value AS INT)    END) AS n_target,
@@ -295,10 +363,11 @@ a AS (
   FROM gold.mart_allocation_station
   GROUP BY scenario, variant, kommun_kod
 )
-SELECT s.scenario, s.variant, s.kommun_kod, s.score, s.score_rank,
-       CAST(COALESCE(a.n_stations, 0) AS INT)                               AS n_stations,
+SELECT s.scenario, s.variant, s.kommun_kod,
+       s.attractiveness, s.attractiveness_rank, s.ev, s.alpha, s.cost_factor, s.votes, s.votes_rank,
+       CAST(COALESCE(a.n_stations, 0) AS INT)                                   AS n_stations,
        a.first_seat,
-       COALESCE(a.n_stations, 0) * p.station_kw                             AS kw_new,
+       COALESCE(a.n_stations, 0) * p.station_kw                                 AS kw_new,
        SUM(COALESCE(a.n_stations, 0)) OVER (PARTITION BY s.scenario, s.variant) AS run_stations,
        p.n_target,
        p.max_per_kommun

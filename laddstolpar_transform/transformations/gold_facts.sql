@@ -155,3 +155,18 @@ SELECT
   st._snapshot_date
 FROM st
 JOIN agg a USING (station_id);
+
+-- Traffic on state roads per kommun (NVDB Trafik, one snapshot; findings 69-71)
+CREATE OR REFRESH MATERIALIZED VIEW gold.fct_trafik_kommun (
+  CONSTRAINT one_row_per_kommun EXPECT (n_same = 1) ON VIOLATION FAIL UPDATE,
+  CONSTRAINT kommun_in_dim      EXPECT (in_dim)     ON VIOLATION FAIL UPDATE
+)
+COMMENT 'Kommun grain: state-road sections, road km, vehicle-km/day (all + heavy), max ÅDT, measured share, weighted measurement year, betraktelsedatum.'
+AS
+SELECT
+  t.kommun_kod, t.n_sections, t.road_km, t.vkm_per_day, t.vkm_heavy_per_day, t.max_adt,
+  t.vkm_share_measured, t.vkm_weighted_year, t.n_sections_no_adt, t.betraktelsedatum,
+  COUNT(*) OVER (PARTITION BY t.kommun_kod) AS n_same,
+  d.kommun_kod IS NOT NULL                  AS in_dim
+FROM silver.nvdb_trafik_kommun t
+LEFT JOIN gold.dim_kommun d ON d.kommun_kod = t.kommun_kod;

@@ -4,17 +4,20 @@
 
 -- Scenario weights: relative points in the seed, normalised to sum 1 per scenario
 CREATE OR REFRESH MATERIALIZED VIEW gold.param_scenario_weights (
-  CONSTRAINT known_metric     EXPECT (metric IN ('ev_demand', 'growth', 'price', 'supply')) ON VIOLATION FAIL UPDATE,
+  CONSTRAINT known_metric     EXPECT (metric IN ('growth', 'price', 'supply', 'supply_traffic', 'through_traffic')) ON VIOLATION FAIL UPDATE,
   CONSTRAINT weight_valid     EXPECT (COALESCE(weight_raw >= 0, false))                     ON VIOLATION FAIL UPDATE,
   CONSTRAINT scenario_nonzero EXPECT (COALESCE(weight_sum > 0, false))                      ON VIOLATION FAIL UPDATE,
   CONSTRAINT one_row_per_pair EXPECT (n_same_pair = 1)                                      ON VIOLATION FAIL UPDATE,
-  CONSTRAINT all_four_metrics EXPECT (n_metrics = 4)                                        ON VIOLATION FAIL UPDATE
+  CONSTRAINT all_five_metrics EXPECT (n_metrics = 5)                                        ON VIOLATION FAIL UPDATE,
+  CONSTRAINT has_strategy     EXPECT (has_strategy)                                         ON VIOLATION FAIL UPDATE
 )
-COMMENT 'Scenario weights per metric (method §3.2). weight = weight_raw / Σ weight_raw per scenario.'
+COMMENT 'Attractiveness-index weights per strategy (method §3.3). EV demand is the quantity in the votes, not an index metric. weight = weight_raw / Σ weight_raw per scenario.'
 AS
 WITH w AS (
-  SELECT scenario, scenario_namn, metric, try_cast(weight AS DOUBLE) AS weight_raw
-  FROM bronze.seed_param_scenario_weights
+  SELECT w.scenario, w.scenario_namn, w.metric, try_cast(w.weight AS DOUBLE) AS weight_raw,
+         s.scenario IS NOT NULL AS has_strategy
+  FROM bronze.seed_param_scenario_weights w
+  LEFT JOIN (SELECT DISTINCT scenario FROM bronze.seed_param_strategy) s ON s.scenario = w.scenario
 )
 SELECT
   scenario,
@@ -27,22 +30,50 @@ SELECT
   COUNT(*) OVER (PARTITION BY scenario)                           AS n_metrics
 FROM w;
 
--- Robustness variants: each swaps one metric or switches the cost factor off (method §5)
-CREATE OR REFRESH MATERIALIZED VIEW gold.param_variant (
-  CONSTRAINT swap_is_pair  EXPECT ((swap_from IS NULL) = (swap_to IS NULL))                                ON VIOLATION FAIL UPDATE,
-  CONSTRAINT swap_from_ok  EXPECT (COALESCE(swap_from IN ('ev_demand', 'growth', 'price', 'supply'), true)) ON VIOLATION FAIL UPDATE,
-  CONSTRAINT cost_flag_set EXPECT (use_cost_factor IS NOT NULL)                                             ON VIOLATION FAIL UPDATE
+-- Strategy size elasticity α (method §3.3, §4.2): votes = EV^α × attractiveness ÷ cost
+CREATE OR REFRESH MATERIALIZED VIEW gold.param_strategy (
+  CONSTRAINT alpha_valid     EXPECT (COALESCE(alpha BETWEEN 0 AND 1, false)) ON VIOLATION FAIL UPDATE,
+  CONSTRAINT unique_scenario EXPECT (n_same = 1)                             ON VIOLATION FAIL UPDATE,
+  CONSTRAINT has_weights     EXPECT (COALESCE(n_weight_rows > 0, false))     ON VIOLATION FAIL UPDATE
 )
-COMMENT 'Robustness variants. Runs = scenarios × variants; blank swap = no metric swap (NULLIF, finding 64).'
+COMMENT 'Size elasticity α per strategy: 1 = stations in proportion to EVs, 0.5 = size counts but less, 0 = size ignored.'
 AS
 SELECT
-  variant,
-  variant_namn,
-  NULLIF(swap_from, '')                      AS swap_from,
-  NULLIF(swap_to, '')                        AS swap_to,
-  try_cast(use_cost_factor AS BOOLEAN)       AS use_cost_factor
-FROM bronze.seed_param_variant;
+  s.scenario,
+  try_cast(s.alpha AS DOUBLE)                AS alpha,
+  s.note,
+  COUNT(*) OVER (PARTITION BY s.scenario)    AS n_same,
+  w.n_weight_rows
+FROM bronze.seed_param_strategy s
+LEFT JOIN (SELECT scenario, COUNT(*) AS n_weight_rows
+           FROM bronze.seed_param_scenario_weights GROUP BY scenario) w
+  ON w.scenario = s.scenario;
 
+-- Robustness variants: each swaps one metric or switches the cost factor off (method §5)
+CREATE OR REFRESH MATERIALIZED VIEW gold.param_variant (
+  CONSTRAINT swap_is_pair        EXPECT ((swap_from IS NULL) = (swap_to IS NULL))                         ON VIOLATION FAIL UPDATE,
+  CONSTRAINT swap_from_ok        EXPECT (COALESCE(swap_from IN ('growth', 'price', 'supply', 'supply_traffic', 'through_traffic'), true)) ON VIOLATION FAIL UPDATE,
+  CONSTRAINT cost_flag_set       EXPECT (use_cost_factor IS NOT NULL)                                     ON VIOLATION FAIL UPDATE,
+  CONSTRAINT alpha_parsed        EXPECT ((alpha_raw IS NULL) = (alpha IS NULL))                           ON VIOLATION FAIL UPDATE,
+  CONSTRAINT alpha_valid         EXPECT (COALESCE(alpha BETWEEN 0 AND 1, true))                           ON VIOLATION FAIL UPDATE,
+  CONSTRAINT only_scenario_known EXPECT (only_scenario IS NULL OR scenario_exists)                        ON VIOLATION FAIL UPDATE
+)
+COMMENT 'Robustness variants. Runs = strategies × variants (only_scenario limits a variant to one strategy); blank = no swap / strategy α (NULLIF, finding 64).'
+AS
+SELECT
+  v.variant,
+  v.variant_namn,
+  NULLIF(v.swap_from, '')                    AS swap_from,
+  NULLIF(v.swap_to, '')                      AS swap_to,
+  try_cast(v.use_cost_factor AS BOOLEAN)     AS use_cost_factor,
+  NULLIF(v.alpha, '')                        AS alpha_raw,
+  try_cast(NULLIF(v.alpha, '') AS DOUBLE)    AS alpha,
+  NULLIF(v.only_scenario, '')                AS only_scenario,
+  s.scenario IS NOT NULL                     AS scenario_exists
+FROM bronze.seed_param_variant v
+LEFT JOIN (SELECT DISTINCT scenario FROM bronze.seed_param_strategy) s
+  ON s.scenario = NULLIF(v.only_scenario, '');
+  
 -- Cost factor per SKR kommungrupp, driven from the groups that actually exist in dim_kommun (one row per gruppkod)
 CREATE OR REFRESH MATERIALIZED VIEW gold.param_cost_factor (
   CONSTRAINT factor_present EXPECT (COALESCE(cost_factor > 0, false))                ON VIOLATION FAIL UPDATE,
