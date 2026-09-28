@@ -41,6 +41,9 @@ trafficflow_probe/
 screenshots/
 documents/
 
+# trafik
+trafik/
+
 *.key
 trafficflow_probe/
 __pycache__/
