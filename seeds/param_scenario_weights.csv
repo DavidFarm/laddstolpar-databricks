@@ -1,13 +1,11 @@
 scenario,scenario_namn,metric,weight
-S1,Spec only,ev_demand,1
-S1,Spec only,growth,1
-S1,Spec only,price,1
-S1,Spec only,supply,0
-S2,Spec + supply,ev_demand,25
-S2,Spec + supply,growth,25
-S2,Spec + supply,price,25
-S2,Spec + supply,supply,25
-S3,Growth support,ev_demand,15
-S3,Growth support,growth,35
-S3,Growth support,price,15
-S3,Growth support,supply,35
+P1,Day-one volume,growth,0
+P1,Day-one volume,price,50
+P1,Day-one volume,supply,50
+P1,Day-one volume,supply_traffic,0
+P1,Day-one volume,through_traffic,0
+P2,National build-out,growth,30
+P2,National build-out,price,0
+P2,National build-out,supply,20
+P2,National build-out,supply_traffic,25
+P2,National build-out,through_traffic,25
