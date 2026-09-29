@@ -3,6 +3,7 @@
 -- Assumptions live here, not in dimensions, so robustness runs change parameters only.
 
 -- Scenario weights: relative points in the seed, normalised to sum 1 per scenario
+-- Attractiveness-index weights per strategy: relative points in the seed, normalised to sum 1 per scenario
 CREATE OR REFRESH MATERIALIZED VIEW gold.param_scenario_weights (
   CONSTRAINT known_metric     EXPECT (metric IN ('growth', 'price', 'supply', 'supply_traffic', 'through_traffic')) ON VIOLATION FAIL UPDATE,
   CONSTRAINT weight_valid     EXPECT (COALESCE(weight_raw >= 0, false))                     ON VIOLATION FAIL UPDATE,
@@ -27,7 +28,8 @@ SELECT
   SUM(weight_raw) OVER (PARTITION BY scenario)                    AS weight_sum,
   weight_raw / SUM(weight_raw) OVER (PARTITION BY scenario)       AS weight,
   COUNT(*) OVER (PARTITION BY scenario, metric)                   AS n_same_pair,
-  COUNT(*) OVER (PARTITION BY scenario)                           AS n_metrics
+  COUNT(*) OVER (PARTITION BY scenario)                           AS n_metrics,
+  has_strategy
 FROM w;
 
 -- Strategy size elasticity α (method §3.3, §4.2): votes = EV^α × attractiveness ÷ cost
