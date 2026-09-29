@@ -6,3 +6,5 @@ first_divisor,1.0,divisor,pure Sainte-Laguë; Riksdag variant uses a higher firs
 phev_weight,0.6,ratio,AFIR 0.8/1.3
 growth_window_months,12,months,TAB3277 window for growth
 price_window_days,365,days,zone mean price window
+n_stations_p1_default,35,stations,combined allocation: default stations from the first strategy (decision 29 Sep)
+combined_step,5,stations,slider step for the combined allocation (0 to n_stations)
