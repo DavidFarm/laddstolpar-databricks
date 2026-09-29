@@ -1,9 +1,10 @@
-variant,variant_namn,swap_from,swap_to,use_cost_factor,alpha,only_scenario
-base,Base case,,,true,,
-no_cost,No cost adjustment,,,false,,
-zone_secondary,Split kommuner on secondary price zone,price,price_zone_alt,true,,
-supply_county,Supply counted per county,supply,supply_county,true,,
-growth_raw,Growth without shrinkage,growth,growth_raw,true,,
-growth_stock,Growth as change in fleet share (C),growth,growth_stock,true,,
-alpha_025,Size elasticity 0.25,,,true,0.25,P2
-alpha_075,Size elasticity 0.75,,,true,0.75,P2
+variant,variant_namn,swap_from,swap_to,use_cost_factor,alpha,only_scenario,quantity
+base,Base case,,,true,,,
+no_cost,No cost adjustment,,,false,,,
+zone_secondary,Split kommuner on secondary price zone,price,price_zone_alt,true,,,
+supply_county,Supply counted per county,supply,supply_county,true,,,
+growth_raw,Growth without shrinkage,growth,growth_raw,true,,,
+growth_stock,Growth as change in fleet share (C),growth,growth_stock,true,,,
+alpha_025,Size elasticity 0.25,,,true,0.25,P2,
+alpha_075,Size elasticity 0.75,,,true,0.75,P2,
+quantity_ev,P2 quantity = local EVs (v1 of P2),,,true,,P2,ev_demand
