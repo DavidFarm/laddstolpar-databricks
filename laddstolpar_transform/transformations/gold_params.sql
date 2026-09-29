@@ -36,13 +36,15 @@ FROM w;
 CREATE OR REFRESH MATERIALIZED VIEW gold.param_strategy (
   CONSTRAINT alpha_valid     EXPECT (COALESCE(alpha BETWEEN 0 AND 1, false)) ON VIOLATION FAIL UPDATE,
   CONSTRAINT unique_scenario EXPECT (n_same = 1)                             ON VIOLATION FAIL UPDATE,
-  CONSTRAINT has_weights     EXPECT (COALESCE(n_weight_rows > 0, false))     ON VIOLATION FAIL UPDATE
+  CONSTRAINT has_weights     EXPECT (COALESCE(n_weight_rows > 0, false))     ON VIOLATION FAIL UPDATE,
+  CONSTRAINT quantity_known EXPECT (quantity IN ('ev_demand', 'traffic')) ON VIOLATION FAIL UPDATE
 )
 COMMENT 'Size elasticity α per strategy: 1 = stations in proportion to EVs, 0.5 = size counts but less, 0 = size ignored.'
 AS
 SELECT
   s.scenario,
   try_cast(s.alpha AS DOUBLE)                AS alpha,
+  s.quantity,
   s.note,
   COUNT(*) OVER (PARTITION BY s.scenario)    AS n_same,
   w.n_weight_rows
@@ -58,7 +60,8 @@ CREATE OR REFRESH MATERIALIZED VIEW gold.param_variant (
   CONSTRAINT cost_flag_set       EXPECT (use_cost_factor IS NOT NULL)                                     ON VIOLATION FAIL UPDATE,
   CONSTRAINT alpha_parsed        EXPECT ((alpha_raw IS NULL) = (alpha IS NULL))                           ON VIOLATION FAIL UPDATE,
   CONSTRAINT alpha_valid         EXPECT (COALESCE(alpha BETWEEN 0 AND 1, true))                           ON VIOLATION FAIL UPDATE,
-  CONSTRAINT only_scenario_known EXPECT (only_scenario IS NULL OR scenario_exists)                        ON VIOLATION FAIL UPDATE
+  CONSTRAINT only_scenario_known EXPECT (only_scenario IS NULL OR scenario_exists)                        ON VIOLATION FAIL UPDATE,
+  CONSTRAINT quantity_known EXPECT (COALESCE(quantity IN ('ev_demand', 'traffic'), true)) ON VIOLATION FAIL UPDATE
 )
 COMMENT 'Robustness variants. Runs = strategies × variants (only_scenario limits a variant to one strategy); blank = no swap / strategy α (NULLIF, finding 64).'
 AS
@@ -71,6 +74,7 @@ SELECT
   NULLIF(v.alpha, '')                        AS alpha_raw,
   try_cast(NULLIF(v.alpha, '') AS DOUBLE)    AS alpha,
   NULLIF(v.only_scenario, '')                AS only_scenario,
+  NULLIF(v.quantity, '')                     AS quantity,
   s.scenario IS NOT NULL                     AS scenario_exists
 FROM bronze.seed_param_variant v
 LEFT JOIN (SELECT DISTINCT scenario FROM bronze.seed_param_strategy) s

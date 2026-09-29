@@ -267,13 +267,13 @@ SELECT r.scenario, r.scenario_namn, r.variant, r.variant_namn,
 FROM runs r
 JOIN gold.mart_kommun_metric m ON m.metric = r.metric_used;
 
--- Attractiveness and votes per run and kommun (method §4.2): votes = EV^α × attractiveness ÷ cost
+-- Attractiveness and votes per run and kommun (method §4.2): votes = quantity^α × attractiveness ÷ cost; quantity = EVs (P1) or state-road traffic (P2)
 CREATE OR REFRESH MATERIALIZED VIEW gold.mart_kommun_score (
   CONSTRAINT all_components     EXPECT (n_components = n_expected)                        ON VIOLATION FAIL UPDATE,
   CONSTRAINT attractiveness_ok  EXPECT (COALESCE(attractiveness BETWEEN 0 AND 1, false))  ON VIOLATION FAIL UPDATE,
   CONSTRAINT votes_ok           EXPECT (COALESCE(votes >= 0, false))                      ON VIOLATION FAIL UPDATE
 )
-COMMENT 'Per run and kommun: attractiveness a (0–1, weighted percentile positions), EV, α, cost factor and votes = EV^α × a ÷ cost.'
+COMMENT 'Per run and kommun: attractiveness a (0–1, weighted percentile positions), quantity (EVs in P1, state-road traffic in P2), α, cost factor and votes = quantity^α × a ÷ cost.'
 AS
 WITH s AS (
   SELECT scenario, variant, kommun_kod,
@@ -285,29 +285,35 @@ WITH s AS (
 n AS (SELECT scenario, COUNT(*) AS n_expected FROM gold.param_scenario_weights GROUP BY scenario),
 run AS (
   SELECT st.scenario, v.variant,
-         COALESCE(v.alpha, st.alpha) AS alpha,
+         COALESCE(v.alpha, st.alpha)       AS alpha,
+         COALESCE(v.quantity, st.quantity) AS quantity,
          v.use_cost_factor
   FROM gold.param_strategy st
   CROSS JOIN gold.param_variant v
   WHERE v.only_scenario IS NULL OR v.only_scenario = st.scenario
 ),
-ev AS (SELECT kommun_kod, value AS ev FROM gold.mart_kommun_metric WHERE metric = 'ev_demand'),
+qv AS (
+  SELECT kommun_kod, metric AS quantity, value AS quantity_value
+  FROM gold.mart_kommun_metric
+  WHERE metric IN ('ev_demand', 'traffic')
+),
 b AS (
   SELECT s.scenario, s.variant, s.kommun_kod,
          s.attractiveness, s.n_components, n.n_expected,
-         e.ev, r.alpha,
+         r.quantity, q.quantity_value, r.alpha,
          CASE WHEN r.use_cost_factor THEN CAST(c.cost_factor AS DOUBLE) ELSE 1.0 END AS cost_factor
   FROM s
   JOIN n USING (scenario)
   JOIN run r USING (scenario, variant)
-  JOIN ev e USING (kommun_kod)
-  JOIN gold.dim_kommun k USING (kommun_kod)
-  JOIN gold.param_cost_factor c USING (gruppkod)
+  JOIN qv q ON q.kommun_kod = s.kommun_kod AND q.quantity = r.quantity
+  JOIN gold.dim_kommun k ON k.kommun_kod = s.kommun_kod
+  JOIN gold.param_cost_factor c ON c.gruppkod = k.gruppkod
 )
 SELECT b.*,
-       POWER(b.ev, b.alpha) * b.attractiveness / b.cost_factor                                         AS votes,
-       RANK() OVER (PARTITION BY scenario, variant ORDER BY attractiveness DESC)                          AS attractiveness_rank,
-       RANK() OVER (PARTITION BY scenario, variant ORDER BY POWER(ev, alpha) * attractiveness / cost_factor DESC) AS votes_rank
+       POWER(b.quantity_value, b.alpha) * b.attractiveness / b.cost_factor AS votes,
+       RANK() OVER (PARTITION BY scenario, variant ORDER BY attractiveness DESC) AS attractiveness_rank,
+       RANK() OVER (PARTITION BY scenario, variant
+                    ORDER BY POWER(quantity_value, alpha) * attractiveness / cost_factor DESC) AS votes_rank
 FROM b;
 
 -- Allocation: the N largest quotients votes / divisor (Sainte-Laguë, first divisor from param_model), cap per kommun
@@ -364,7 +370,9 @@ a AS (
   GROUP BY scenario, variant, kommun_kod
 )
 SELECT s.scenario, s.variant, s.kommun_kod,
-       s.attractiveness, s.attractiveness_rank, s.ev, s.alpha, s.cost_factor, s.votes, s.votes_rank,
+       s.attractiveness, s.attractiveness_rank, 
+       s.quantity, s.quantity_value, s.alpha, 
+       s.cost_factor, s.votes, s.votes_rank,
        CAST(COALESCE(a.n_stations, 0) AS INT)                                   AS n_stations,
        a.first_seat,
        COALESCE(a.n_stations, 0) * p.station_kw                                 AS kw_new,
