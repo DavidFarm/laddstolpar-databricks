@@ -32,27 +32,31 @@ SELECT
   has_strategy
 FROM w;
 
--- Strategy size elasticity α (method §3.3, §4.2): votes = EV^α × attractiveness ÷ cost
+-- Strategy parameters (method §3.3, §4.2, §4.3): votes = quantity^α × attractiveness ÷ cost; combine_order for the slider
 CREATE OR REFRESH MATERIALIZED VIEW gold.param_strategy (
-  CONSTRAINT alpha_valid     EXPECT (COALESCE(alpha BETWEEN 0 AND 1, false)) ON VIOLATION FAIL UPDATE,
-  CONSTRAINT unique_scenario EXPECT (n_same = 1)                             ON VIOLATION FAIL UPDATE,
-  CONSTRAINT has_weights     EXPECT (COALESCE(n_weight_rows > 0, false))     ON VIOLATION FAIL UPDATE,
-  CONSTRAINT quantity_known EXPECT (quantity IN ('ev_demand', 'traffic')) ON VIOLATION FAIL UPDATE
+  CONSTRAINT alpha_valid     EXPECT (COALESCE(alpha BETWEEN 0 AND 1, false))    ON VIOLATION FAIL UPDATE,
+  CONSTRAINT quantity_known  EXPECT (quantity IN ('ev_demand', 'traffic'))      ON VIOLATION FAIL UPDATE,
+  CONSTRAINT order_valid     EXPECT (COALESCE(combine_order IN (1, 2), false))  ON VIOLATION FAIL UPDATE,
+  CONSTRAINT unique_scenario EXPECT (n_same = 1)                                ON VIOLATION FAIL UPDATE,
+  CONSTRAINT unique_order    EXPECT (n_same_order = 1)                          ON VIOLATION FAIL UPDATE,
+  CONSTRAINT has_weights     EXPECT (COALESCE(n_weight_rows > 0, false))        ON VIOLATION FAIL UPDATE
 )
-COMMENT 'Size elasticity α per strategy: 1 = stations in proportion to EVs, 0.5 = size counts but less, 0 = size ignored.'
+COMMENT 'Per strategy: size elasticity α, quantity in the votes (EVs or state-road traffic) and its order in the combined allocation (1 = first n₁ seats).'
 AS
 SELECT
   s.scenario,
-  try_cast(s.alpha AS DOUBLE)                AS alpha,
+  try_cast(s.alpha AS DOUBLE)                    AS alpha,
   s.quantity,
+  try_cast(s.combine_order AS INT)               AS combine_order,
   s.note,
-  COUNT(*) OVER (PARTITION BY s.scenario)    AS n_same,
+  COUNT(*) OVER (PARTITION BY s.scenario)        AS n_same,
+  COUNT(*) OVER (PARTITION BY s.combine_order)   AS n_same_order,
   w.n_weight_rows
 FROM bronze.seed_param_strategy s
 LEFT JOIN (SELECT scenario, COUNT(*) AS n_weight_rows
            FROM bronze.seed_param_scenario_weights GROUP BY scenario) w
   ON w.scenario = s.scenario;
-
+  
 -- Robustness variants: each swaps one metric or switches the cost factor off (method §5)
 CREATE OR REFRESH MATERIALIZED VIEW gold.param_variant (
   CONSTRAINT swap_is_pair        EXPECT ((swap_from IS NULL) = (swap_to IS NULL))                         ON VIOLATION FAIL UPDATE,

@@ -382,3 +382,119 @@ SELECT s.scenario, s.variant, s.kommun_kod,
 FROM gold.mart_kommun_score s
 LEFT JOIN a USING (scenario, variant, kommun_kod)
 CROSS JOIN p;
+
+-- Combined allocation (method §4.3): n₁ seats from the first strategy (its own seats 1 … n₁), then
+-- n_stations − n₁ from the second, continuing the divisors after each kommun's first-part stations.
+-- Precomputed for n₁ = 0, step, …, n_stations and every variant shared by both strategies → dashboard slider.
+CREATE OR REFRESH MATERIALIZED VIEW gold.mart_allocation_combined_station (
+  CONSTRAINT within_cap  EXPECT (station_no_in_kommun <= max_per_kommun) ON VIOLATION FAIL UPDATE,
+  CONSTRAINT seat_in_run EXPECT (seat_no BETWEEN 1 AND n_target)         ON VIOLATION FAIL UPDATE
+)
+COMMENT 'One row per allocated station per slider setting (n_p1) and variant: seats 1..n_p1 from the first strategy, the rest from the second with continued Sainte-Laguë divisors.'
+AS
+WITH p AS (
+  SELECT MAX(CASE WHEN parameter = 'n_stations'     THEN CAST(value AS INT)    END) AS n_target,
+         MAX(CASE WHEN parameter = 'max_per_kommun' THEN CAST(value AS INT)    END) AS max_per_kommun,
+         MAX(CASE WHEN parameter = 'first_divisor'  THEN CAST(value AS DOUBLE) END) AS first_divisor,
+         MAX(CASE WHEN parameter = 'combined_step'  THEN CAST(value AS INT)    END) AS step
+  FROM gold.param_model
+),
+s1 AS (SELECT scenario AS s1 FROM gold.param_strategy WHERE combine_order = 1),
+s2 AS (SELECT scenario AS s2 FROM gold.param_strategy WHERE combine_order = 2),
+settings AS (SELECT explode(sequence(0, n_target, step)) AS n_p1 FROM p),
+vars AS (SELECT variant FROM gold.param_variant WHERE only_scenario IS NULL),   -- variants that exist for both strategies
+js AS (SELECT explode(sequence(1, max_per_kommun)) AS j FROM p),
+
+-- Part 1: the first strategy's own seats 1 … n₁
+part1 AS (
+  SELECT st.n_p1, a.variant, a.seat_no, s1.s1 AS part, a.kommun_kod,
+         a.station_no_in_kommun, a.divisor, a.quotient
+  FROM settings st
+  CROSS JOIN s1
+  JOIN gold.mart_allocation_station a ON a.scenario = s1.s1 AND a.seat_no <= st.n_p1
+  JOIN vars v ON v.variant = a.variant
+),
+k1 AS (
+  SELECT n_p1, variant, kommun_kod, COUNT(*) AS k
+  FROM part1
+  GROUP BY n_p1, variant, kommun_kod
+),
+
+-- Part 2: the second strategy's quotient pool, each kommun starting after its Part 1 stations
+pool2 AS (
+  SELECT st.n_p1, sc.variant, sc.kommun_kod, sc.votes, js.j,
+         CASE WHEN js.j = 1 THEN p.first_divisor ELSE 2 * js.j - 1 END           AS divisor,
+         sc.votes / CASE WHEN js.j = 1 THEN p.first_divisor ELSE 2 * js.j - 1 END AS quotient
+  FROM settings st
+  CROSS JOIN p
+  CROSS JOIN s2
+  CROSS JOIN js
+  JOIN gold.mart_kommun_score sc ON sc.scenario = s2.s2 AND sc.votes > 0
+  JOIN vars v ON v.variant = sc.variant
+  LEFT JOIN k1 ON k1.n_p1 = st.n_p1 AND k1.variant = sc.variant AND k1.kommun_kod = sc.kommun_kod
+  WHERE js.j > COALESCE(k1.k, 0)
+),
+part2 AS (
+  SELECT q.*,
+         ROW_NUMBER() OVER (PARTITION BY n_p1, variant
+                            ORDER BY quotient DESC, votes DESC, kommun_kod, j) AS rn   -- deterministic tie-break
+  FROM pool2 q
+)
+SELECT x.n_p1, x.variant, x.seat_no, x.part, x.kommun_kod, x.station_no_in_kommun, x.divisor, x.quotient,
+       p.n_target, p.max_per_kommun
+FROM (
+  SELECT n_p1, variant, seat_no, part, kommun_kod, station_no_in_kommun, divisor, quotient FROM part1
+  UNION ALL
+  SELECT q.n_p1, q.variant, q.n_p1 + q.rn, s2.s2, q.kommun_kod, q.j, q.divisor, q.quotient
+  FROM part2 q CROSS JOIN s2 CROSS JOIN p
+  WHERE q.rn <= p.n_target - q.n_p1
+) x
+CROSS JOIN p;
+
+-- Combined allocation per slider setting, variant and kommun (all 290, 0 where none)
+CREATE OR REFRESH MATERIALIZED VIEW gold.mart_allocation_combined (
+  CONSTRAINT within_cap      EXPECT (n_stations <= max_per_kommun) ON VIOLATION FAIL UPDATE,
+  CONSTRAINT run_total       EXPECT (run_stations = n_target)      ON VIOLATION FAIL UPDATE,
+  CONSTRAINT default_present EXPECT (default_present = 1)          ON VIOLATION FAIL UPDATE
+)
+COMMENT 'Combined allocation per slider setting (n_p1 = stations from the first strategy), variant and kommun: stations from each part, total, new kW; is_default marks the recommended setting.'
+AS
+WITH p AS (
+  SELECT MAX(CASE WHEN parameter = 'n_stations'            THEN CAST(value AS INT)    END) AS n_target,
+         MAX(CASE WHEN parameter = 'max_per_kommun'        THEN CAST(value AS INT)    END) AS max_per_kommun,
+         MAX(CASE WHEN parameter = 'station_kw'            THEN CAST(value AS DOUBLE) END) AS station_kw,
+         MAX(CASE WHEN parameter = 'n_stations_p1_default' THEN CAST(value AS INT)    END) AS n_p1_default,
+         MAX(CASE WHEN parameter = 'combined_step'         THEN CAST(value AS INT)    END) AS step
+  FROM gold.param_model
+),
+settings AS (SELECT explode(sequence(0, n_target, step)) AS n_p1 FROM p),
+vars     AS (SELECT variant FROM gold.param_variant WHERE only_scenario IS NULL),
+grid AS (   -- from the parameters, not from the result: every setting × shared variant × kommun
+  SELECT s.n_p1, v.variant, k.kommun_kod
+  FROM settings s CROSS JOIN vars v CROSS JOIN gold.dim_kommun k
+),
+a AS (
+  SELECT n_p1, variant, kommun_kod,
+         COUNT_IF(seat_no <= n_p1) AS n_part1,
+         COUNT_IF(seat_no >  n_p1) AS n_part2,
+         MIN(seat_no)              AS first_seat
+  FROM gold.mart_allocation_combined_station
+  GROUP BY n_p1, variant, kommun_kod
+),
+b AS (
+  SELECT g.n_p1, g.variant, g.kommun_kod,
+         CAST(COALESCE(a.n_part1, 0) AS INT) AS n_part1,
+         CAST(COALESCE(a.n_part2, 0) AS INT) AS n_part2,
+         a.first_seat
+  FROM grid g
+  LEFT JOIN a ON a.n_p1 = g.n_p1 AND a.variant = g.variant AND a.kommun_kod = g.kommun_kod
+)
+SELECT b.*,
+       b.n_part1 + b.n_part2                                            AS n_stations,
+       (b.n_part1 + b.n_part2) * p.station_kw                           AS kw_new,
+       SUM(b.n_part1 + b.n_part2) OVER (PARTITION BY b.n_p1, b.variant) AS run_stations,
+       b.n_p1 = p.n_p1_default                                          AS is_default,
+       MAX(CASE WHEN b.n_p1 = p.n_p1_default THEN 1 ELSE 0 END) OVER () AS default_present,
+       p.n_target,
+       p.max_per_kommun
+FROM b CROSS JOIN p;
