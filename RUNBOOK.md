@@ -23,12 +23,14 @@ Handoff for the colleague who runs and fixes the pipeline. **Owner:** David Fär
 
 ## 3. Troubleshooting
 
-### 3.1 FAILED mail → read the message: `Operation on target <step> failed: <error>`
+### 3.1 FAILED mail → which step, then what error
+
+The mail says `Operation on target <step> failed: …`. For a job step it also has a **run page URL**: open it, and the notebook's own error is at the failing cell, e.g. `SCB | GET config | failed after 4 attempt(s): HTTP 503`.
 
 ```mermaid
 flowchart TD
   F["FAILED mail"] --> S{"Which step?"}
-  S -->|"ingest_*"| H{"HTTP status<br/>in message?"}
+  S -->|"ingest_*"| H{"HTTP status<br/>on run page?"}
   H -->|"5xx / 429 / timeout"| W["Wait a few hours → Rerun"]
   W -->|"still failing next day"| A["Check the source API<br/>(open URL, status page, docs)"]
   H -->|"401 / 403"| K["Renew API key in Key Vault"]
@@ -38,7 +40,7 @@ flowchart TD
   S -->|"not authorized"| R["ADF identity permissions"]
 ```
 
-| Message contains | Fix → *still failing?* |
+| Error (mail or run page) | Fix → *still failing?* |
 |---|---|
 | `failed after 4 attempt(s): HTTP 5xx / 429 / Timeout` | Source down; already retried 4× in the notebook and 2× by ADF. Wait a few hours → *Rerun* → *still failing next day?* Open the API URL / source docs; if the API changed, see the next rows |
 | `HTTP 401 / 403` | NOBIL key expired → new *version* of secret `nobil-api-key` in `kv-labb2-df` → *Rerun* → *still?* Check that the scope `kv-labb2` can read it (prints `[REDACTED]`). SCB 403 = query over the cell limit → check the paging in notebook `02` |
