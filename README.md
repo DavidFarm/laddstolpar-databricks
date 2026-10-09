@@ -128,17 +128,19 @@ About **1,010 SEK of the 1,904 SEK** trial credit was used in total.
 
 ## Tech stack
 
-Azure Databricks (Unity Catalog, Volumes, Lakeflow declarative pipelines, Auto Loader, Databricks Jobs, serverless SQL warehouse, AI/BI dashboards) · Azure Data Factory · Azure Logic Apps · Azure Key Vault · Managed Identity / RBAC · SQL · Python (requests, pandas, geopandas) · Delta Lake · Git
+Azure Databricks (Unity Catalog, Volumes, Lakeflow declarative pipelines, Auto Loader, Databricks Jobs, serverless SQL warehouse, AI/BI dashboards) · Azure Data Factory · Azure Logic Apps · Azure Key Vault · Managed Identity / RBAC · SQL · Python (requests, pandas, numpy, pyshp) · Delta Lake · Git
 
 ## Data sources
 
-| Source | Content | Role |
-|---|---|---|
-| [SCB](https://www.scb.se/) | Cars, new registrations and population per kommun | required |
-| [Elpriset just nu](https://www.elprisetjustnu.se/) | Spot price per zone, every 15 minutes | required |
-| [Trafikanalys](https://www.trafa.se/) | Cars in traffic per fuel | extra |
-| [NOBIL](https://nobil.no/) | Existing charging stations (API key) | extra |
-| [Trafikverket NVDB](https://www.trafikverket.se/) | Road traffic per kommun (yearly seed, preprocessed locally with `tools/`) | extra |
+| Source | Content | Role | Licence |
+|---|---|---|---|
+| [SCB](https://www.scb.se/en/services/open-data-api/) | Cars, new registrations and population per kommun | required | CC0 |
+| [Elpriset just nu](https://www.elprisetjustnu.se/elpris-api) | Spot price per zone, every 15 minutes | required | Free to use; no formal licence, attribution requested for public use |
+| [Trafikanalys](https://www.trafa.se/sidor/oppen-data-api/) | Cars in traffic per fuel | extra | Free to reuse; source attribution required ("Källa: Trafikanalys") |
+| [NOBIL](https://nobil.no/) | Existing charging stations (API key) | extra | CC BY 4.0 (attribution required) |
+| [Trafikverket NVDB](https://www.trafikverket.se/) | Road traffic per kommun (yearly seed, preprocessed locally with `tools/`) | extra | CC0 |
+
+**Attribution:** charging station data from [NOBIL](https://nobil.no/) (CC BY 4.0); statistics from Trafikanalys; electricity prices from [Elpriset just nu](https://www.elprisetjustnu.se/). Data licences are the providers' own and are separate from the MIT licence on this repository's code.
 
 ## Repository map
 
@@ -160,7 +162,7 @@ The pipeline runs in Azure (Databricks workspace, Data Factory, Key Vault) and n
 python -m venv .venv
 .venv\Scripts\activate          # PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-copy .env.example .env          # then fill in TRV_API_KEY
+$env:TRV_API_KEY="..."          # Trafikverket key for the probe in explore/ (see .env.example)
 ```
 
 ## Limitations
@@ -179,6 +181,10 @@ copy .env.example .env          # then fill in TRV_API_KEY
 - Revenue and payback data to set the 35 + 15 mix
 - Seasonal peaks for destination areas
 - CI/CD and automated tests for the pipeline code
+
+## Licence
+
+Code: [MIT](LICENSE). The data sources keep their own licences, listed under *Data sources*.
 
 ---
 
