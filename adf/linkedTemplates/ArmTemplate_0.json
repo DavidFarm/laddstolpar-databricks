@@ -1,0 +1,394 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "factoryName": {
+            "type": "string",
+            "metadata": "Data Factory name",
+            "defaultValue": "adf-laddstolpar"
+        },
+        "tr_laddstolpar_weekly_properties_pl_laddstolpar_main_parameters_simulate_http_status": {
+            "type": "string",
+            "defaultValue": "off"
+        }
+    },
+    "variables": {
+        "factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+    },
+    "resources": [
+        {
+            "name": "[concat(parameters('factoryName'), '/ls_laddstolpar')]",
+            "type": "Microsoft.DataFactory/factories/linkedServices",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "type": "AzureDatabricks",
+                "typeProperties": {
+                    "domain": "https://adb-7405610112169917.17.azuredatabricks.net",
+                    "authentication": "MSI",
+                    "workspaceResourceId": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-Databricks/providers/Microsoft.Databricks/workspaces/dbw-databricks-learn"
+                }
+            },
+            "dependsOn": []
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/pl_laddstolpar_run')]",
+            "type": "Microsoft.DataFactory/factories/pipelines",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "activities": [
+                    {
+                        "name": "ingest_elpris",
+                        "type": "DatabricksJob",
+                        "dependsOn": [],
+                        "policy": {
+                            "timeout": "0.01:00:00",
+                            "retry": 2,
+                            "retryIntervalInSeconds": 60,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "jobId": "101575333692214"
+                        },
+                        "linkedServiceName": {
+                            "referenceName": "ls_laddstolpar",
+                            "type": "LinkedServiceReference"
+                        }
+                    },
+                    {
+                        "name": "ingest_scb",
+                        "type": "DatabricksJob",
+                        "dependsOn": [],
+                        "policy": {
+                            "timeout": "0.01:00:00",
+                            "retry": 2,
+                            "retryIntervalInSeconds": 60,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "jobId": "87412525097808",
+                            "jobParameters": {
+                                "simulate_http_status": {
+                                    "value": "@pipeline().parameters.simulate_http_status",
+                                    "type": "Expression"
+                                }
+                            }
+                        },
+                        "linkedServiceName": {
+                            "referenceName": "ls_laddstolpar",
+                            "type": "LinkedServiceReference"
+                        }
+                    },
+                    {
+                        "name": "ingest_trafa",
+                        "type": "DatabricksJob",
+                        "dependsOn": [],
+                        "policy": {
+                            "timeout": "0.01:00:00",
+                            "retry": 2,
+                            "retryIntervalInSeconds": 60,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "jobId": "998107283538601"
+                        },
+                        "linkedServiceName": {
+                            "referenceName": "ls_laddstolpar",
+                            "type": "LinkedServiceReference"
+                        }
+                    },
+                    {
+                        "name": "ingest_chargers",
+                        "type": "DatabricksJob",
+                        "dependsOn": [],
+                        "policy": {
+                            "timeout": "0.01:00:00",
+                            "retry": 2,
+                            "retryIntervalInSeconds": 60,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "jobId": "350817903888689"
+                        },
+                        "linkedServiceName": {
+                            "referenceName": "ls_laddstolpar",
+                            "type": "LinkedServiceReference"
+                        }
+                    },
+                    {
+                        "name": "seeds",
+                        "type": "DatabricksJob",
+                        "dependsOn": [],
+                        "policy": {
+                            "timeout": "0.01:00:00",
+                            "retry": 2,
+                            "retryIntervalInSeconds": 60,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "jobId": "1001023182302565"
+                        },
+                        "linkedServiceName": {
+                            "referenceName": "ls_laddstolpar",
+                            "type": "LinkedServiceReference"
+                        }
+                    },
+                    {
+                        "name": "transform",
+                        "type": "DatabricksJob",
+                        "dependsOn": [
+                            {
+                                "activity": "ingest_elpris",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            },
+                            {
+                                "activity": "ingest_scb",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            },
+                            {
+                                "activity": "ingest_trafa",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            },
+                            {
+                                "activity": "ingest_chargers",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            },
+                            {
+                                "activity": "seeds",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.02:00:00",
+                            "retry": 2,
+                            "retryIntervalInSeconds": 60,
+                            "secureOutput": false,
+                            "secureInput": false
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "jobId": "626550475254670"
+                        },
+                        "linkedServiceName": {
+                            "referenceName": "ls_laddstolpar",
+                            "type": "LinkedServiceReference"
+                        }
+                    }
+                ],
+                "policy": {
+                    "elapsedTimeMetric": {}
+                },
+                "parameters": {
+                    "simulate_http_status": {
+                        "type": "string",
+                        "defaultValue": "off"
+                    }
+                },
+                "annotations": [],
+                "lastPublishTime": "2026-10-05T15:44:34Z"
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/linkedServices/ls_laddstolpar')]"
+            ]
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/pl_laddstolpar_main')]",
+            "type": "Microsoft.DataFactory/factories/pipelines",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "activities": [
+                    {
+                        "name": "web_mail_success",
+                        "type": "WebActivity",
+                        "dependsOn": [
+                            {
+                                "activity": "exec_run",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": true
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "method": "POST",
+                            "headers": {
+                                "Content-Type": "application/json"
+                            },
+                            "url": "<LOGIC_APP_CALLBACK_URL - keep in Key Vault, never commit>",
+                            "body": {
+                                "status": "SUCCESS",
+                                "pipelineName": "@{pipeline().Pipeline}",
+                                "runId": "@{pipeline().RunId}",
+                                "factory": "@{pipeline().DataFactory}",
+                                "triggerTime": "@{pipeline().TriggerTime}",
+                                "message": "All steps completed."
+                            }
+                        }
+                    },
+                    {
+                        "name": "exec_run",
+                        "type": "ExecutePipeline",
+                        "dependsOn": [],
+                        "policy": {
+                            "secureInput": false
+                        },
+                        "userProperties": [
+                            {
+                                "name": "simulate_http_status",
+                                "value": "@pipeline().parameters.simulate_http_status"
+                            }
+                        ],
+                        "typeProperties": {
+                            "pipeline": {
+                                "referenceName": "pl_laddstolpar_run",
+                                "type": "PipelineReference"
+                            },
+                            "waitOnCompletion": true,
+                            "parameters": {
+                                "simulate_http_status": {
+                                    "value": "@pipeline().parameters.simulate_http_status",
+                                    "type": "Expression"
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "name": "web_mail_failure",
+                        "type": "WebActivity",
+                        "dependsOn": [
+                            {
+                                "activity": "exec_run",
+                                "dependencyConditions": [
+                                    "Failed"
+                                ]
+                            }
+                        ],
+                        "policy": {
+                            "timeout": "0.12:00:00",
+                            "retry": 0,
+                            "retryIntervalInSeconds": 30,
+                            "secureOutput": false,
+                            "secureInput": true
+                        },
+                        "userProperties": [],
+                        "typeProperties": {
+                            "method": "POST",
+                            "headers": {
+                                "Content-Type": "application/json"
+                            },
+                            "url": "<LOGIC_APP_CALLBACK_URL - keep in Key Vault, never commit>",
+                            "body": {
+                                "value": "{\n  \"status\": \"FAILED\",\n  \"pipelineName\": \"@{pipeline().Pipeline}\",\n  \"runId\": \"@{pipeline().RunId}\",\n  \"factory\": \"@{pipeline().DataFactory}\",\n  \"triggerTime\": \"@{pipeline().TriggerTime}\",\n  \"message\": \"@{replace(replace(replace(activity('exec_run').error.message, '\\', '/'), '\\\"', ''''), decodeUriComponent('%0A'), ' ')}\"\n}",
+                                "type": "Expression"
+                            }
+                        }
+                    },
+                    {
+                        "name": "fail_pipeline",
+                        "type": "Fail",
+                        "dependsOn": [
+                            {
+                                "activity": "web_mail_failure",
+                                "dependencyConditions": [
+                                    "Succeeded"
+                                ]
+                            }
+                        ],
+                        "userProperties": [],
+                        "typeProperties": {
+                            "message": {
+                                "value": "@activity('exec_run').error.message",
+                                "type": "Expression"
+                            },
+                            "errorCode": "PIPELINE_FAILED"
+                        }
+                    }
+                ],
+                "policy": {
+                    "elapsedTimeMetric": {}
+                },
+                "parameters": {
+                    "simulate_http_status": {
+                        "type": "string",
+                        "defaultValue": "off"
+                    }
+                },
+                "annotations": [],
+                "lastPublishTime": "2026-10-05T15:44:35Z"
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/pipelines/pl_laddstolpar_run')]"
+            ]
+        },
+        {
+            "name": "[concat(parameters('factoryName'), '/tr_laddstolpar_weekly')]",
+            "type": "Microsoft.DataFactory/factories/triggers",
+            "apiVersion": "2018-06-01",
+            "properties": {
+                "annotations": [],
+                "runtimeState": "Stopped",
+                "pipelines": [
+                    {
+                        "pipelineReference": {
+                            "referenceName": "pl_laddstolpar_main",
+                            "type": "PipelineReference"
+                        },
+                        "parameters": {
+                            "simulate_http_status": "[parameters('tr_laddstolpar_weekly_properties_pl_laddstolpar_main_parameters_simulate_http_status')]"
+                        }
+                    }
+                ],
+                "type": "ScheduleTrigger",
+                "typeProperties": {
+                    "recurrence": {
+                        "frequency": "Week",
+                        "interval": 1,
+                        "startTime": "2026-10-06T07:07:00",
+                        "timeZone": "W. Europe Standard Time",
+                        "schedule": {
+                            "minutes": [
+                                0
+                            ],
+                            "hours": [
+                                6
+                            ],
+                            "weekDays": [
+                                "Monday"
+                            ]
+                        }
+                    }
+                }
+            },
+            "dependsOn": [
+                "[concat(variables('factoryId'), '/pipelines/pl_laddstolpar_main')]"
+            ]
+        }
+    ]
+}

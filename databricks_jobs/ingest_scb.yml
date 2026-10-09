@@ -1,0 +1,17 @@
+resources:
+  jobs:
+    ingest_scb:
+      name: ingest_scb
+      tasks:
+        - task_key: ingest_scb
+          notebook_task:
+            notebook_path: /Workspace/Users/<your-user>/laddstolpar-databricks/02_landing_scb
+            base_parameters:
+              simulate_http_status: ""
+            source: WORKSPACE
+      queue:
+        enabled: true
+      parameters:
+        - name: simulate_http_status
+          default: ""
+      performance_target: STANDARD

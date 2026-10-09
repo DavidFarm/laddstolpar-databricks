@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    ingest_chargers:
+      name: ingest_chargers
+      tasks:
+        - task_key: ingest_chargers
+          notebook_task:
+            notebook_path: /Workspace/Users/<your-user>/laddstolpar-databricks/05_landing_nobil
+            source: WORKSPACE
+      queue:
+        enabled: true
+      performance_target: STANDARD

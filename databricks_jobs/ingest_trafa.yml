@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    ingest_trafa:
+      name: ingest_trafa
+      tasks:
+        - task_key: ingest_trafa
+          notebook_task:
+            notebook_path: /Workspace/Users/<your-user>/laddstolpar-databricks/03_landing_trafa
+            source: WORKSPACE
+      queue:
+        enabled: true
+      performance_target: STANDARD

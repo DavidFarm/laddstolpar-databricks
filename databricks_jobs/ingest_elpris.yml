@@ -1,0 +1,17 @@
+resources:
+  jobs:
+    ingest_elpris:
+      name: ingest_elpris
+      tasks:
+        - task_key: ingest_elpris
+          notebook_task:
+            notebook_path: /Workspace/Users/<your-user>/laddstolpar-databricks/01_landing_elpris
+            source: WORKSPACE
+          environment_key: ingest_elpris_environment
+      queue:
+        enabled: true
+      environments:
+        - environment_key: ingest_elpris_environment
+          spec:
+            environment_version: "6"
+      performance_target: STANDARD

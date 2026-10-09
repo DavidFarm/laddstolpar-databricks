@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    seeds:
+      name: seeds
+      tasks:
+        - task_key: seeds
+          notebook_task:
+            notebook_path: /Workspace/Users/<your-user>/laddstolpar-databricks/04_seeds
+            source: WORKSPACE
+      queue:
+        enabled: true
+      performance_target: STANDARD

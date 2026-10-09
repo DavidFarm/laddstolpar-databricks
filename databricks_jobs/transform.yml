@@ -1,0 +1,11 @@
+resources:
+  jobs:
+    transform:
+      name: transform
+      tasks:
+        - task_key: transform
+          pipeline_task:
+            pipeline_id: a17b2418-c28f-4982-9212-376ef3a7466a
+      queue:
+        enabled: true
+      performance_target: STANDARD

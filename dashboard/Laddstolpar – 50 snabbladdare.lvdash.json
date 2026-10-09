@@ -1,0 +1,898 @@
+{
+  "datasets": [
+    {
+      "name": "449c67e5",
+      "displayName": "ds_allocation",
+      "queryLines": [
+        "SELECT\r\n",
+        "  a.n_p1, a.variant, a.is_default,\r\n",
+        "  a.kommun_kod, k.kommun_namn, k.lan_namn, k.kommungrupp, k.is_besoksnaring, k.elomrade,\r\n",
+        "  a.n_part1, a.n_part2, a.n_stations, a.kw_new,\r\n",
+        "  a.kw_new / 1000.0 AS mw_new,\r\n",
+        "  a.first_seat,\r\n",
+        "  CASE\r\n",
+        "    WHEN a.n_stations = 0 THEN 'Ingen'\r\n",
+        "    WHEN a.n_part1 > 0 AND a.n_part2 > 0 THEN 'Båda'\r\n",
+        "    WHEN a.n_part1 > 0 THEN 'P1 – där bilarna bor'\r\n",
+        "    ELSE 'P2 – där bilarna kör'\r\n",
+        "  END AS strategi\r\n",
+        "FROM laddstolpar_df.gold.mart_allocation_combined a\r\n",
+        "JOIN laddstolpar_df.gold.dim_kommun k USING (kommun_kod)\r\n",
+        "ORDER BY a.n_p1, a.variant, a.n_stations DESC, a.first_seat"
+      ]
+    },
+    {
+      "name": "7720ccab",
+      "displayName": "ds_component",
+      "queryLines": [
+        "-- ds_component: score components per strategy × shared variant × kommun\r\n",
+        "SELECT\r\n",
+        "  c.scenario,                                   -- P1 / P2\r\n",
+        "  CASE c.scenario WHEN 'P1' THEN 'P1 – där bilarna bor'\r\n",
+        "                  ELSE 'P2 – där bilarna kör' END AS strategi,\r\n",
+        "  c.variant,\r\n",
+        "  c.kommun_kod,\r\n",
+        "  k.kommun_namn,\r\n",
+        "  c.metric_used,\r\n",
+        "  CASE c.metric_used\r\n",
+        "    WHEN 'ev_demand'       THEN 'Många elbilar'\r\n",
+        "    WHEN 'growth'          THEN 'Snabb tillväxt'\r\n",
+        "    WHEN 'growth_raw'      THEN 'Snabb tillväxt (rå)'\r\n",
+        "    WHEN 'growth_stock'    THEN 'Tillväxt i flottan'\r\n",
+        "    WHEN 'price'           THEN 'Billig el'\r\n",
+        "    WHEN 'price_zone_alt'  THEN 'Billig el (alt. zon)'\r\n",
+        "    WHEN 'supply'          THEN 'Få laddare per elbil'\r\n",
+        "    WHEN 'supply_county'   THEN 'Få laddare per elbil (län)'\r\n",
+        "    WHEN 'supply_traffic'  THEN 'Få laddare per trafik'\r\n",
+        "    WHEN 'through_traffic' THEN 'Genomfartstrafik'\r\n",
+        "    ELSE c.metric_used\r\n",
+        "  END AS komponent,\r\n",
+        "  c.weight,\r\n",
+        "  c.pct_rank,\r\n",
+        "  c.contribution,\r\n",
+        "  c.detail\r\n",
+        "FROM laddstolpar_df.gold.mart_kommun_score_component c\r\n",
+        "JOIN laddstolpar_df.gold.dim_kommun k USING (kommun_kod)\r\n",
+        "WHERE c.variant IN (SELECT DISTINCT variant FROM laddstolpar_df.gold.mart_allocation_combined)"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "b5fae050",
+      "displayName": "Var ska 50 snabbladdare byggas?",
+      "layout": [
+        {
+          "widget": {
+            "name": "stationer-enligt-p1-resten-p2",
+            "queries": [
+              {
+                "name": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcaca62a1c15a422008da1cb7bbf_n_p1",
+                "query": {
+                  "datasetName": "449c67e5",
+                  "fields": [
+                    {
+                      "name": "n_p1",
+                      "expression": "`n_p1`"
+                    },
+                    {
+                      "name": "n_p1_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "INTEGER",
+                    "values": [
+                      {
+                        "value": "35"
+                      }
+                    ]
+                  }
+                }
+              },
+              "disallowAll": true,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 12px;\">Stationer enligt P1 (resten P2)</span>",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "n_p1",
+                    "queryName": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcaca62a1c15a422008da1cb7bbf_n_p1"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 3,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "kanslighetsvariant",
+            "queries": [
+              {
+                "name": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcaca62a1c15a422008da1cb7bbf_variant",
+                "query": {
+                  "datasetName": "449c67e5",
+                  "fields": [
+                    {
+                      "name": "variant",
+                      "expression": "`variant`"
+                    },
+                    {
+                      "name": "variant_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcbf333f1dbbbd692f3b5fe215f5_variant",
+                "query": {
+                  "datasetName": "7720ccab",
+                  "fields": [
+                    {
+                      "name": "variant",
+                      "expression": "`variant`"
+                    },
+                    {
+                      "name": "variant_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "base"
+                      }
+                    ]
+                  }
+                }
+              },
+              "disallowAll": true,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 12px;\">Känslighetsvariant</span>",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "variant",
+                    "queryName": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcaca62a1c15a422008da1cb7bbf_variant"
+                  },
+                  {
+                    "fieldName": "variant",
+                    "queryName": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcbf333f1dbbbd692f3b5fe215f5_variant"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 0,
+            "width": 3,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "63e93de8",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "449c67e5",
+                  "fields": [
+                    {
+                      "name": "sum(n_stations)",
+                      "expression": "SUM(`n_stations`)"
+                    },
+                    {
+                      "name": "kommun_namn",
+                      "expression": "`kommun_namn`"
+                    },
+                    {
+                      "name": "strategi",
+                      "expression": "`strategi`"
+                    },
+                    {
+                      "name": "sum(n_part1)",
+                      "expression": "SUM(`n_part1`)"
+                    },
+                    {
+                      "name": "sum(n_part2)",
+                      "expression": "SUM(`n_part2`)"
+                    },
+                    {
+                      "name": "kommun_kod",
+                      "expression": "`kommun_kod`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "mark": {
+                "opacity": 1
+              },
+              "widgetType": "choropleth-map",
+              "encodings": {
+                "color": {
+                  "fieldName": "sum(n_stations)",
+                  "legend": {
+                    "title": "New stations",
+                    "hide": true
+                  },
+                  "scale": {
+                    "type": "quantitative",
+                    "domain": {
+                      "min": 0,
+                      "max": 3
+                    }
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "kommun_namn"
+                  },
+                  {
+                    "fieldName": "strategi"
+                  },
+                  {
+                    "fieldName": "sum(n_part1)"
+                  },
+                  {
+                    "fieldName": "sum(n_part2)"
+                  }
+                ],
+                "region": {
+                  "regionType": "mapbox-v4-admin",
+                  "admin0": {
+                    "type": "value",
+                    "value": "Sverige",
+                    "geographicRole": "admin0-name"
+                  },
+                  "admin2": {
+                    "fieldName": "kommun_kod",
+                    "type": "field",
+                    "geographicRole": "admin2-unit-code"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 7,
+            "height": 10
+          }
+        },
+        {
+          "widget": {
+            "name": "nya-stationer",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "449c67e5",
+                  "fields": [
+                    {
+                      "name": "sum(n_stations)",
+                      "expression": "SUM(`n_stations`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 12px;\">Nya stationer</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(n_stations)"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 2,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "ny-effekt-kw",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "449c67e5",
+                  "fields": [
+                    {
+                      "name": "sum(mw_new)",
+                      "expression": "SUM(`mw_new`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 12px;\">Ny effekt (MW)</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(mw_new)"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 0,
+            "width": 2,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "kommuner-med-station",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "449c67e5",
+                  "fields": [
+                    {
+                      "name": "countdistinct(kommun_kod)",
+                      "expression": "COUNT(DISTINCT `kommun_kod`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "IN_RANGE(`n_stations`, 1, NULL)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size:12px\">Kommuner</span>",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "countdistinct(kommun_kod)"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 10,
+            "y": 0,
+            "width": 2,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "rek-kommune-rekommandationer",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "449c67e5",
+                  "fields": [
+                    {
+                      "name": "kommun_namn",
+                      "expression": "`kommun_namn`"
+                    },
+                    {
+                      "name": "n_stations",
+                      "expression": "`n_stations`"
+                    },
+                    {
+                      "name": "strategi",
+                      "expression": "`strategi`"
+                    },
+                    {
+                      "name": "lan_namn",
+                      "expression": "`lan_namn`"
+                    },
+                    {
+                      "name": "n_part1",
+                      "expression": "`n_part1`"
+                    },
+                    {
+                      "name": "n_part2",
+                      "expression": "`n_part2`"
+                    },
+                    {
+                      "name": "kommungrupp",
+                      "expression": "`kommungrupp`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "IN_RANGE(`n_stations`, 1, NULL)"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Rekommenderade kommuner",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "headerStyle": {
+                "fontSize": 10
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "kommun_namn"
+                  },
+                  {
+                    "fieldName": "n_stations"
+                  },
+                  {
+                    "fieldName": "strategi"
+                  },
+                  {
+                    "fieldName": "lan_namn"
+                  },
+                  {
+                    "fieldName": "n_part1"
+                  },
+                  {
+                    "fieldName": "n_part2"
+                  },
+                  {
+                    "fieldName": "kommungrupp"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 7,
+            "y": 1,
+            "width": 5,
+            "height": 10
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "42b5a814",
+      "displayName": "Varför?",
+      "layout": [
+        {
+          "widget": {
+            "name": "bde356ec",
+            "queries": [
+              {
+                "name": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcaca62a1c15a422008da1cb7bbf_variant",
+                "query": {
+                  "datasetName": "449c67e5",
+                  "fields": [
+                    {
+                      "name": "variant",
+                      "expression": "`variant`"
+                    },
+                    {
+                      "name": "variant_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcbf333f1dbbbd692f3b5fe215f5_variant",
+                "query": {
+                  "datasetName": "7720ccab",
+                  "fields": [
+                    {
+                      "name": "variant",
+                      "expression": "`variant`"
+                    },
+                    {
+                      "name": "variant_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "base"
+                      }
+                    ]
+                  }
+                }
+              },
+              "disallowAll": true,
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "<span style=\"font-size: 12px;\">Känslighetsvariant</span>",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "variant",
+                    "queryName": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcaca62a1c15a422008da1cb7bbf_variant"
+                  },
+                  {
+                    "fieldName": "variant",
+                    "queryName": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcbf333f1dbbbd692f3b5fe215f5_variant"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "18635162",
+            "queries": [
+              {
+                "name": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcbf333f1dbbbd692f3b5fe215f5_kommun_namn",
+                "query": {
+                  "datasetName": "7720ccab",
+                  "fields": [
+                    {
+                      "name": "kommun_namn",
+                      "expression": "`kommun_namn`"
+                    },
+                    {
+                      "name": "kommun_namn_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "disallowAll": true,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "Stockholm"
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Välj kommun",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "kommun_namn",
+                    "queryName": "dashboards/01f1bcac87e81955915e27cc21d8e03f/datasets/01f1bcbf333f1dbbbd692f3b5fe215f5_kommun_namn"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "c451170f",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "7720ccab",
+                  "fields": [
+                    {
+                      "name": "strategi",
+                      "expression": "`strategi`"
+                    },
+                    {
+                      "name": "sum(pct_rank)",
+                      "expression": "SUM(`pct_rank`)"
+                    },
+                    {
+                      "name": "sum(weight)",
+                      "expression": "SUM(`weight`)"
+                    },
+                    {
+                      "name": "detail",
+                      "expression": "`detail`"
+                    },
+                    {
+                      "name": "komponent",
+                      "expression": "`komponent`"
+                    },
+                    {
+                      "name": "sum(contribution)",
+                      "expression": "SUM(`contribution`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Varför denna kommun?",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "mark": {
+                "layout": "group"
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "komponent",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(contribution)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "strategi",
+                  "legend": {
+                    "hide": false,
+                    "hideTitle": true
+                  },
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "extra": [
+                  {
+                    "fieldName": "sum(pct_rank)"
+                  },
+                  {
+                    "fieldName": "sum(weight)"
+                  },
+                  {
+                    "fieldName": "detail"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "ec01aedc",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "7720ccab",
+                  "fields": [
+                    {
+                      "name": "strategi",
+                      "expression": "`strategi`"
+                    },
+                    {
+                      "name": "komponent",
+                      "expression": "`komponent`"
+                    },
+                    {
+                      "name": "pct_rank",
+                      "expression": "`pct_rank`"
+                    },
+                    {
+                      "name": "detail",
+                      "expression": "`detail`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "IN_RANGE(`weight`, 0.01D, NULL)"
+                    }
+                  ],
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "ASC",
+                      "expression": "`strategi`"
+                    },
+                    {
+                      "direction": "DESC",
+                      "expression": "`pct_rank`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "strategi"
+                  },
+                  {
+                    "fieldName": "komponent"
+                  },
+                  {
+                    "fieldName": "pct_rank"
+                  },
+                  {
+                    "fieldName": "detail"
+                  }
+                ],
+                "rowOrder": [
+                  {
+                    "by": "column",
+                    "field": {
+                      "index": 0
+                    }
+                  },
+                  {
+                    "by": "column-reversed",
+                    "field": {
+                      "index": 2
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 12,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}

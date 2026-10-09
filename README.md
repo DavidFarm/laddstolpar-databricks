@@ -148,6 +148,9 @@ Azure Databricks (Unity Catalog, Volumes, Lakeflow declarative pipelines, Auto L
 00_Setup.ipynb … 05_landing_nobil.ipynb   Landing + bronze notebooks (setup, APIs, seeds, NOBIL)
 99_validate_run.ipynb                     Idempotency check → ops.run_validation
 laddstolpar_transform/transformations/    Lakeflow pipeline: silver_*.sql, gold_dims/facts/marts/params.sql, ops_*_checks.sql
+adf/                                      Azure Data Factory export (ARM templates) and the Logic App that sends the status mail
+databricks_jobs/                          Databricks Jobs as YAML: five ingest jobs, seeds and the transform
+dashboard/                                The AI/BI dashboard as a .lvdash.json export (importable in Databricks)
 seeds/                                    Mapping and parameter CSVs (strategies, weights, cost factors, kommun/zone maps)
 tools/                                    Local preprocessing of NVDB traffic data into a per-kommun seed
 explore/                                  Exploration notebooks and the Trafikverket API probe (not part of the pipeline)
@@ -155,6 +158,8 @@ RUNBOOK.md                                Operations handoff
 ```
 
 ## Running it yourself
+
+The orchestration and dashboard are exported as code, so the setup can be recreated: the ADF factory from `adf/` (ARM templates), the jobs from `databricks_jobs/` and the dashboard from `dashboard/`. The exports are **scrubbed**: the Logic App callback URL (which contains a signature), the subscription, tenant and identity IDs, the mail address and the workspace user path are placeholders you must fill in. Real values stay in Key Vault and ADF *Secure input*.
 
 The pipeline runs in Azure (Databricks workspace, Data Factory, Key Vault) and needs your own subscription and API keys. See [`RUNBOOK.md`](RUNBOOK.md) for how to run, rerun and troubleshoot it. To use the local helper tools and probes:
 
