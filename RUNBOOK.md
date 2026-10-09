@@ -8,7 +8,7 @@ Handoff for the colleague who runs and fixes the pipeline. **Owner:** David Fär
 
 | Task | How |
 |---|---|
-| **Normal run** | ADF Studio → `pl_laddstolpar_main` → *Add trigger → Trigger now* → `simulate_http_status = off`. ≈ 30 min, ≈ 11 kr. Mail → david.farm12@outlook.com |
+| **Normal run** | ADF Studio → `pl_laddstolpar_main` → *Add trigger → Trigger now* → `simulate_http_status = off`. ≈ 30 min, ≈ 11 kr. Mail → data.engineer@yourcompany.com |
 | **Schedule** | `tr_laddstolpar_weekly`, Mon 06:00 Stockholm. **Stopped** (Free Trial ends 15 Oct). Enable: *Manage → Triggers → Start → Publish all* |
 | **Rerun** | ADF *Monitor* → failed run → *Rerun* |
 | **Without ADF** | Databricks *Jobs & Pipelines* → `ingest_<source>` → *Run now*, then `transform` (no mail) |

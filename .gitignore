@@ -44,6 +44,9 @@ documents/
 # trafik
 trafik/
 
+# presentations
+presentation/
+
 *.key
 trafficflow_probe/
 __pycache__/
